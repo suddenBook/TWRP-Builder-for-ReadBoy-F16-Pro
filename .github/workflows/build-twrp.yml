@@ -1,0 +1,93 @@
+# 工作流的名称
+name: Build TWRP
+
+# 触发条件：当手动点击 "Run workflow" 按钮时触发
+on:
+  workflow_dispatch:
+    inputs:
+      # 定义一个输入框，让你在运行时填写设备代号
+      DEVICE_CODENAME:
+        description: '设备代号 (例如: whyred)'
+        required: true
+      # 定义一个输入框，让你在运行时填写设备品牌
+      DEVICE_BRAND:
+        description: '设备品牌 (例如: xiaomi)'
+        required: true
+      # 定义一个下拉菜单，让你选择构建目标
+      BUILD_TARGET:
+        description: '构建目标 (A/B 分区设备选 bootimage)'
+        required: true
+        type: choice
+        options:
+        - recoveryimage
+        - bootimage
+        default: recoveryimage
+
+jobs:
+  build:
+    # 任务名称
+    name: Build TWRP for ${{ github.event.inputs.DEVICE_CODENAME }}
+    # 运行环境：使用最新的 Ubuntu 系统
+    runs-on: ubuntu-22.04
+
+    steps:
+      # 步骤 1: 检出你的仓库代码
+      # 这一步会把你的仓库（包含设备树）下载到虚拟机里
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 步骤 2: 缓存 TWRP 源码
+      # 这是一个优化步骤。它会缓存 repo 下载的源码。
+      # 第一次运行时会下载全部源码并缓存，后续运行会快很多！
+      - name: Cache TWRP sources
+        uses: actions/cache@v3
+        with:
+          path: ~/twrp_sources/.repo
+          key: ${{ runner.os }}-twrp-omni-10
+
+      # 步骤 3: 安装编译环境和依赖
+      # 使用一个预设好的 Action 来安装所有编译 Android 所需的工具
+      - name: Setup Android Build Environment
+        uses: n-actions/setup-android-build-env@v1
+        with:
+          java-version: "8" # TWRP 10 需要 Java 8
+          ndk-version: "r23b"
+
+      # 步骤 4: 同步 TWRP 源码
+      # 这一步会执行 repo init 和 repo sync
+      - name: Sync TWRP sources
+        run: |
+          mkdir -p ~/twrp_sources
+          cd ~/twrp_sources
+          repo init -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_omni.git -b twrp-10.0-deprecated --depth=1
+          repo sync -c --force-sync --no-clone-bundle --no-tags -j$(nproc --all)
+
+      # 步骤 5: 复制设备树到源码目录
+      # 从你的仓库复制设备树到 TWRP 源码的正确位置
+      - name: Copy device tree
+        run: |
+          # 使用你在上面 inputs 中定义的品牌和代号
+          BRAND=${{ github.event.inputs.DEVICE_BRAND }}
+          DEVICE=${{ github.event.inputs.DEVICE_CODENAME }}
+          # 创建目标目录
+          mkdir -p ~/twrp_sources/device/$BRAND
+          # 从当前仓库（GitHub Action 检出的目录）复制设备树
+          cp -r $GITHUB_WORKSPACE/device/$BRAND/$DEVICE ~/twrp_sources/device/$BRAND/
+
+      # 步骤 6: 开始编译
+      # 执行编译命令
+      - name: Build
+        run: |
+          cd ~/twrp_sources
+          export ALLOW_MISSING_DEPENDENCIES=true
+          source build/envsetup.sh
+          lunch omni_${{ github.event.inputs.DEVICE_CODENAME }}-eng
+          mka ${{ github.event.inputs.BUILD_TARGET }} -j$(nproc --all)
+
+      # 步骤 7: 上传编译产物
+      # 将编译好的 recovery.img 或 boot.img 上传为 "Artifacts"
+      - name: Upload recovery image
+        uses: actions/upload-artifact@v3
+        with:
+          name: twrp-${{ github.event.inputs.DEVICE_CODENAME }}
+          path: ~/twrp_sources/out/target/product/${{ github.event.inputs.DEVICE_CODENAME }}/${{ github.event.inputs.BUILD_TARGET }}.img
