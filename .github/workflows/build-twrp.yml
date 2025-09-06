@@ -87,7 +87,7 @@ jobs:
       # 步骤 7: 上传编译产物
       # 将编译好的 recovery.img 或 boot.img 上传为 "Artifacts"
       - name: Upload recovery image
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: twrp-${{ github.event.inputs.DEVICE_CODENAME }}
           path: ~/twrp_sources/out/target/product/${{ github.event.inputs.DEVICE_CODENAME }}/${{ github.event.inputs.BUILD_TARGET }}.img
