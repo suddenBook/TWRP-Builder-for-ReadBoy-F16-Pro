@@ -96,7 +96,7 @@ jobs:
 
       # 步骤 9: 上传编译产物
       - name: Upload recovery image
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: twrp-${{ github.event.inputs.DEVICE_CODENAME }}
           path: ~/twrp_sources/out/target/product/${{ github.event.inputs.DEVICE_CODENAME }}/${{ github.event.inputs.BUILD_TARGET }}.img
